@@ -919,8 +919,8 @@ function LiveSellAndOfferTimer() {
             </div>
           </div>
 
-          {/* Center Side (Col-span 4.5): Flat, Rectangular, Glowing Countdown Timer Units */}
-          <div className="lg:col-span-4.5 flex flex-col items-center">
+          {/* Center Side (Col-span 4): Flat, Rectangular, Glowing Countdown Timer Units */}
+          <div className="lg:col-span-4 flex flex-col items-center">
             <div className="flex items-center justify-center gap-3.5">
               
               {/* Hour Rectangle Box with rotating loop neon outline */}
@@ -976,8 +976,8 @@ function LiveSellAndOfferTimer() {
             </div>
           </div>
 
-          {/* Right Side (Col-span 3.5): Urgency Statement and blinking flame icon */}
-          <div className="lg:col-span-3.5 flex flex-col items-center lg:items-end justify-center text-center lg:text-right border-t lg:border-t-0 lg:border-l border-purple-500/10 pt-4 lg:pt-0 lg:pl-6 space-y-1">
+          {/* Right Side (Col-span 4): Urgency Statement and blinking flame icon */}
+          <div className="lg:col-span-4 flex flex-col items-center lg:items-end justify-center text-center lg:text-right border-t lg:border-t-0 lg:border-l border-purple-500/10 pt-4 lg:pt-0 lg:pl-6 space-y-1">
             <div className="flex items-center gap-1 text-fuchsia-400">
               <Flame className="w-4 h-4 animate-pulse" />
               <span className="text-xs font-extrabold">{offerConfig.urgencyText || "দ্রুত ফুরিয়ে যাচ্ছে!"}</span>
