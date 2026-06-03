@@ -349,17 +349,7 @@ export function ContentProvider({ children }: { children: React.ReactNode }) {
   const [whyChooseUsStats, setWhyChooseUsStats] = useState<any[]>(() => safeGetLocalStorage("avx_c_why_choose_us_stats", defaultWhyChooseUsStats));
   const [whyChooseUsItems, setWhyChooseUsItems] = useState<any[]>(() => safeGetLocalStorage("avx_c_why_choose_us_items", defaultWhyChooseUsItems));
   const [promoPopupConfig, setPromoPopupConfig] = useState<PromoPopupConfig>(() => safeGetLocalStorage("avx_c_promo_popup", defaultPromoPopupConfig));
-  const [isLoading, setIsLoading] = useState<boolean>(() => {
-    // Elegant performance optimization: if we already have local cache, load in 0ms!
-    if (typeof window !== "undefined") {
-      const hasHero = safeLocalStorage.getItem("avx_c_hero");
-      const hasLogo = safeLocalStorage.getItem("avx_c_logo");
-      if (hasHero && hasLogo) {
-        return false;
-      }
-    }
-    return true;
-  });
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Master local storage caching synchronizer
   const updateLocalCache = (updates: Record<string, any>) => {
@@ -406,15 +396,11 @@ export function ContentProvider({ children }: { children: React.ReactNode }) {
     let safetyTimer: any = null;
 
     const fetchInitialData = async () => {
-      // If we don't have cached data, hold loading screen for up to 4500ms safety limit.
-      // Otherwise, the page renders cached layout instantly and performs silent background revalidation.
-      const hasCache = safeLocalStorage.getItem("avx_c_hero") && safeLocalStorage.getItem("avx_c_logo");
-      if (!hasCache) {
-        setIsLoading(true); // force loader if absolutely no cache
-        safetyTimer = setTimeout(() => {
-          setIsLoading(false);
-        }, 4500);
-      }
+      // Force loading screen until fresh data is resolved, with a 4500ms safety limit
+      setIsLoading(true);
+      safetyTimer = setTimeout(() => {
+        setIsLoading(false);
+      }, 4500);
 
       try {
         if (isSupabaseConfigured && supabase) {
@@ -470,7 +456,7 @@ export function ContentProvider({ children }: { children: React.ReactNode }) {
             });
           } else if (error) {
             console.warn("Supabase content query failed, falling back to local Express content JSON DB:", error);
-            const response = await fetch("/api/content");
+            const response = await fetch(`/api/content?t=${Date.now()}`);
             const resJson = await response.json();
             if (resJson.success && resJson.data) {
               const d = resJson.data;
@@ -607,7 +593,7 @@ export function ContentProvider({ children }: { children: React.ReactNode }) {
 
         } else {
           // Standard Offline/Fallback Mode: Retrieve state from Express JSON API Endpoint
-          const response = await fetch("/api/content");
+          const response = await fetch(`/api/content?t=${Date.now()}`);
           const resJson = await response.json();
           if (resJson.success && resJson.data) {
             const d = resJson.data;
@@ -726,7 +712,7 @@ export function ContentProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const refreshContentSilently = async () => {
       try {
-        const response = await fetch("/api/content");
+        const response = await fetch(`/api/content?t=${Date.now()}`);
         const resJson = await response.json();
         if (resJson.success && resJson.data) {
           const d = resJson.data;
