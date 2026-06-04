@@ -108,6 +108,269 @@ function compressImage(file: File, maxWidth = 1600, maxHeight = 1600, quality = 
   });
 }
 
+// Convert Bengali numeric digits to English standard digits
+function banglaToEnglishDigits(str: string): string {
+  const banglaDigits: Record<string, string> = {
+    '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4',
+    '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9'
+  };
+  return str.replace(/[০-৯]/g, (w) => banglaDigits[w] || w);
+}
+
+// Heuristics based Auto-Filler text parser for Ready-Made Websites
+function parseWebsiteTextToObj(text: string): Partial<WebsiteProduct> {
+  const lines = text.split('\n');
+  const result: Partial<WebsiteProduct> = {};
+  
+  const clean = (val: string) => val.trim().replace(/^[:\-\s]+/, '').replace(/^["'“‘']|["'”’']$/g, '').trim();
+  
+  lines.forEach(line => {
+    const lowerLine = line.toLowerCase();
+    const colonIndex = line.indexOf(':');
+    const dashIndex = line.indexOf('-');
+    const splitIndex = colonIndex !== -1 ? colonIndex : (dashIndex !== -1 ? dashIndex : -1);
+    
+    if (splitIndex === -1) return;
+    
+    const key = lowerLine.substring(0, splitIndex).trim();
+    const val = clean(line.substring(splitIndex + 1));
+    
+    if (!val) return;
+    
+    // Title / Name
+    if (/^(নাম|টাইটেল|title|name)$/i.test(key)) {
+      result.title = val;
+    }
+    // Category
+    else if (/^(ক্যাটাগরি|category)$/i.test(key)) {
+      result.category = val;
+    }
+    // Delivery Time
+    else if (/^(ডেলিভারি|সময়সীমা|ডেলিভারি সময়সীমা|delivery|deliverytime)$/i.test(key)) {
+      result.deliveryTime = val;
+    }
+    // Price
+    else if (/^(মূল্য|দাম|price)$/i.test(key) && !/original|regular|পূর্বের|আসল/i.test(key)) {
+      const numStr = banglaToEnglishDigits(val).replace(/\D/g, '');
+      if (numStr) result.price = Number(numStr);
+    }
+    // Original Price
+    else if (/^(আসল মূল্য|আসল দাম|পূর্বের মূল্য|পূর্বের দাম|regular\s*price|original\s*price|originalprice|regularprice)$/i.test(key)) {
+      const numStr = banglaToEnglishDigits(val).replace(/\D/g, '');
+      if (numStr) result.originalPrice = Number(numStr);
+    }
+    // Rating
+    else if (/^(রেটিং|rating)$/i.test(key)) {
+      const numStr = banglaToEnglishDigits(val).replace(/[^0-9.]/g, '');
+      if (numStr) result.rating = Number(numStr);
+    }
+    // Orders Count
+    else if (/^(অর্ডার|অর্ডার সংখ্যা|orders|orderscount)$/i.test(key)) {
+      const numStr = banglaToEnglishDigits(val).replace(/\D/g, '');
+      if (numStr) result.ordersCount = Number(numStr);
+    }
+    // Features Count
+    else if (/^(ফিচার সংখ্যা|ফিচারস সংখ্যা|featurescount)$/i.test(key)) {
+      const numStr = banglaToEnglishDigits(val).replace(/\D/g, '');
+      if (numStr) result.featuresCount = Number(numStr);
+    }
+    // Image URL
+    else if (/^(ছবি|ইমেজ|image|img|banner|imageurl)$/i.test(key)) {
+      if (val.startsWith('http')) result.image = val;
+    }
+    // Tags
+    else if (/^(ট্যাগস|ট্যাগ|tags|tag)$/i.test(key)) {
+      result.tags = val.split(/[,，|]/).map(t => t.trim()).filter(Boolean);
+    }
+    // Demo Link
+    else if (/^(ডেমো|ডেমো লিংক|লিংক|ডেমো ইউআরএল|demo|demourl|link)$/i.test(key)) {
+      if (val.startsWith('http') || val.includes('.')) {
+        result.demoUrl = val.startsWith('http') ? val : 'https://' + val;
+      }
+    }
+    // Features array
+    else if (/^(ফিচারসমূহ|বৈশিষ্ট্য|বৈশিষ্ট্যসমূহ|features)$/i.test(key)) {
+      result.features = val.split(/[,，\n|]/).map(t => t.trim()).filter(Boolean);
+    }
+  });
+
+  // Natural Language Heuristic Fallbacks (if matching key-values failed or wasn't perfect)
+  if (!result.title) {
+    const quotesMatch = text.match(/["'“‘']([^"'”‘\n]+)["'”’']/);
+    if (quotesMatch) {
+      result.title = quotesMatch[1].trim();
+    }
+  }
+
+  if (!result.price) {
+    const priceMatch = text.match(/(?:মূল্য|দাম|প্রাইস)\s*(?:হবে|হল|হলো|হল|ঃ)?\s*([০-৯0-9, ]+)\s*(?:টাকা|৳|tk)?/i) ||
+                       text.match(/([০-৯0-9, ]+)\s*(?:টাকা|৳|tk)/i);
+    if (priceMatch) {
+      const cleanNum = banglaToEnglishDigits(priceMatch[1]).replace(/\D/g, '');
+      if (cleanNum) result.price = Number(cleanNum);
+    }
+  }
+
+  if (!result.originalPrice && result.price) {
+    const origMatch = text.match(/(?:পূর্বের|আসল|রেগুলার)\s*(?:মূল্য|দাম)\s*(?:হবে|হল|হলো|ঃ)?\s*([০-৯0-9, ]+)/i);
+    if (origMatch) {
+      const cleanNum = banglaToEnglishDigits(origMatch[1]).replace(/\D/g, '');
+      if (cleanNum) result.originalPrice = Number(cleanNum);
+    }
+  }
+
+  if (!result.image) {
+    const urls = text.match(/https?:\/\/[^\s"'`]+(?:jpg|png|jpeg|webp|unsplash\.com)[^\s"'`]*/gi);
+    if (urls && urls[0]) {
+      result.image = urls[0];
+    }
+  }
+
+  if (!result.demoUrl) {
+    const urls = text.match(/https?:\/\/[^\s"'`]+/gi);
+    if (urls) {
+      const nonImage = urls.find(u => !u.match(/\.(jpg|png|jpeg|webp)$/i) && !u.includes('unsplash.com'));
+      if (nonImage) {
+        result.demoUrl = nonImage;
+      } else if (urls[0] && urls[0] !== result.image) {
+        result.demoUrl = urls[0];
+      }
+    }
+  }
+
+  if (!result.tags || result.tags.length === 0) {
+    const commonTags = ['React', 'Vue', 'Next.js', 'Tailwind', 'Node.js', 'Express', 'Firebase', 'MongoDB', 'Flutter', 'SSLCommerz', 'Bkash', 'Nagad', 'Bootstrap', 'Laravel', 'PHP', 'Direct Order'];
+    const matchedTags: string[] = [];
+    commonTags.forEach(tag => {
+      if (new RegExp('\\b' + tag.replace('.', '\\.') + '\\b', 'i').test(text)) {
+        matchedTags.push(tag);
+      }
+    });
+    if (matchedTags.length > 0) {
+      result.tags = matchedTags;
+    }
+  }
+
+  return result;
+}
+
+// Heuristics based Auto-Filler text parser for Portfolio Items
+function parsePortfolioTextToObj(text: string): Partial<PortfolioItem> {
+  const lines = text.split('\n');
+  const result: Partial<PortfolioItem> = {};
+  
+  const clean = (val: string) => val.trim().replace(/^[:\-\s]+/, '').replace(/^["'“‘']|["'”’']$/g, '').trim();
+  
+  lines.forEach(line => {
+    const lowerLine = line.toLowerCase();
+    const colonIndex = line.indexOf(':');
+    const dashIndex = line.indexOf('-');
+    const splitIndex = colonIndex !== -1 ? colonIndex : (dashIndex !== -1 ? dashIndex : -1);
+    
+    if (splitIndex === -1) return;
+    
+    const key = lowerLine.substring(0, splitIndex).trim();
+    const val = clean(line.substring(splitIndex + 1));
+    
+    if (!val) return;
+    
+    if (/^(নাম|টাইটেল|title|name)$/i.test(key)) {
+      result.title = val;
+    }
+    else if (/^(ক্যাটাগরি|category)$/i.test(key)) {
+      result.category = val;
+    }
+    else if (/^(ক্লায়েন্ট|ক্লায়েন্ট|গ্রাহক|client|customer)$/i.test(key)) {
+      result.client = val;
+    }
+    else if (/^(বছর|সাল|year|date)$/i.test(key)) {
+      result.year = val;
+    }
+    else if (/^(বর্ণনা|বিবরণ|ডেসক্রিপশন|description|desc|details)$/i.test(key)) {
+      result.description = val;
+    }
+    else if (/^(ছবি|ইমেজ|image|img|banner|imageurl)$/i.test(key)) {
+      if (val.startsWith('http')) result.imageUrl = val;
+    }
+    else if (/^(ট্যাগস|ট্যাগ|tags|tag)$/i.test(key)) {
+      result.tags = val.split(/[,，|]/).map(t => t.trim()).filter(Boolean);
+    }
+    else if (/^(ডেমো|ডেমো লিংক|লিংক|ডেমো ইউআরএল|demo|demourl|link)$/i.test(key)) {
+      if (val.startsWith('http') || val.includes('.')) {
+        result.demoUrl = val.startsWith('http') ? val : 'https://' + val;
+      }
+    }
+  });
+
+  // Natural Language Heuristics for fallback
+  if (!result.title) {
+    const quotesMatch = text.match(/["'“‘']([^"'”‘\n]+)["'”’']/);
+    if (quotesMatch) {
+      result.title = quotesMatch[1].trim();
+    }
+  }
+
+  if (!result.imageUrl) {
+    const urls = text.match(/https?:\/\/[^\s"'`]+(?:jpg|png|jpeg|webp|unsplash\.com)[^\s"'`]*/gi);
+    if (urls && urls[0]) {
+      result.imageUrl = urls[0];
+    }
+  }
+
+  if (!result.demoUrl) {
+    const urls = text.match(/https?:\/\/[^\s"'`]+/gi);
+    if (urls) {
+      const nonImage = urls.find(u => !u.match(/\.(jpg|png|jpeg|webp)$/i) && !u.includes('unsplash.com'));
+      if (nonImage) {
+        result.demoUrl = nonImage;
+      } else if (urls[0] && urls[0] !== result.imageUrl) {
+        result.demoUrl = urls[0];
+      }
+    }
+  }
+
+  if (!result.client) {
+    const clientMatch = text.match(/(?:ক্লায়েন্ট|ক্লায়েন্ট|গ্রাহক|কোম্পানি)\s*(?:হলো|হল|হচ্ছে|ঃ)?\s*["'“‘']?([^"'”‘\n,.]+)/i);
+    if (clientMatch) {
+      result.client = clientMatch[1].trim();
+    }
+  }
+
+  if (!result.year) {
+    const yearMatch = text.match(/(?:২০২৩|২০২৪|২০২৫|২০২৬|২০২৭|2023|2024|2025|2026|2027)/);
+    if (yearMatch) {
+      result.year = yearMatch[0];
+    }
+  }
+
+  if (!result.tags || result.tags.length === 0) {
+    const commonTags = ['Figma', 'React', 'Recharts', 'Flutter', 'Next.js', 'Tailwind CSS', 'Node.js', 'Express', 'Firebase', 'MongoDB', 'SSLCommerz', 'Prisma', 'Google Maps API'];
+    const matchedTags: string[] = [];
+    commonTags.forEach(tag => {
+      if (new RegExp('\\b' + tag.replace('.', '\\.') + '\\b', 'i').test(text)) {
+        matchedTags.push(tag);
+      }
+    });
+    if (matchedTags.length > 0) {
+      result.tags = matchedTags;
+    }
+  }
+
+  if (!result.description) {
+    const cleanProse = text
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.match(/^(নাম|টাইটেল|ক্যাটাগরি|ক্লায়েন্ট|ক্লায়েন্ট|বছর|সাল|ট্যাগস|ট্যাগ|ছবি|ইমেজ|ডেমো|ডেমো লিংক|লিংক|demo|title|client|year|tags|category|image|link|desc|description|details|বিবরণ|বর্ণনা)/i))
+      .join(' ')
+      .trim();
+    if (cleanProse && cleanProse.length > 10) {
+      result.description = cleanProse;
+    }
+  }
+
+  return result;
+}
+
 interface ImageUploadFieldProps {
   label: string;
   value: string;
@@ -1204,6 +1467,10 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
   const [editingCatIcon, setEditingCatIcon] = useState("");
   const [editTestimonialItem, setEditTestimonialItem] = useState<Partial<Testimonial> | null>(null);
   const [editTeamItem, setEditTeamItem] = useState<Partial<TeamMember> | null>(null);
+
+  // States for the client-side AI dynamic parser input boxes
+  const [aiWebText, setAiWebText] = useState("");
+  const [aiPortfolioText, setAiPortfolioText] = useState("");
 
   // Section Headings States (Title & Subtitles)
   const [servicesTitle, setServicesTitle] = useState("");
@@ -3787,6 +4054,42 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
                           {editWebItem.id ? "ওয়েবসাইট এডিট ফরম" : "নতুন ওয়েবসাইট প্রোডাক্ট ফরম"}
                         </h4>
 
+                        {/* 🤖 AI Instant Auto-Filler (No API Keys needed) */}
+                        <div className="bg-[#130b2c] p-4 rounded-xl border border-purple-500/20 space-y-2.5 font-sans">
+                          <div className="flex items-center gap-2 text-purple-300">
+                            <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
+                            <span className="text-[11px] font-bold uppercase tracking-wider">🤖 ম্যাজিক ইনপুট অটো-ফিলার (Gemini API ছাড়া দ্রুততম AI)</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400">
+                            প্রজেক্টের যেকোনো টেক্সট বা ডেসক্রিপশন নিচে পেস্ট করে "ইনস্ট্যান্ট অটো-ফিল করুন" বাটনে ক্লিক করুন। সিস্টেম স্বয়ংক্রিয়ভাবে টাইটেল, ক্যাটাগরি, মূল্য, ডেমো লিংক ও যাবতীয় তথ্য নিচে ইনপুট ফিল্ডগুলোতে বসিয়ে দেবে!
+                          </p>
+                          <textarea
+                            value={aiWebText}
+                            onChange={(e) => setAiWebText(e.target.value)}
+                            placeholder={`উদাহরণস্বরূপ পেস্ট করুন:\nনাম: স্মার্ট অনলাইন নিউজ পোর্টাল ও ব্লগিং সলিউশন\nক্যাটাগরি: মিডিয়া ও ব্লগ পোর্টাল\nমূল্য: ৫০০০ টাকা\nডেলিভারি: ৩ দিন\nরেটিং: ৪.৮\nঅর্ডার: ৭০\nট্যাগস: React, Tailwind, Next.js, Bkash\nলিংক: https://vite.dev\nফিচারসমূহ:\n- Ad Dynamic Slots\n- Multi-Category\n- Super-Fast CDN`}
+                            className="w-full bg-[#0d051a] border border-purple-500/10 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-600 focus:outline-none min-h-[120px] font-sans"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (!aiWebText.trim()) {
+                                triggerSuccessAlert("অনুগ্রহ করে প্রথমে কিছু টেক্সট লিখুন বা পেস্ট করুন!");
+                                return;
+                              }
+                              const parsed = parseWebsiteTextToObj(aiWebText);
+                              setEditWebItem(prev => ({
+                                ...prev,
+                                ...parsed
+                              }));
+                              triggerSuccessAlert("ম্যাজিক অটো-ফিল সফল হয়েছে! সংশ্লিষ্ট ইনপুট ফিল্ডগুলো চেক করুন।");
+                            }}
+                            className="bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-bold text-[11px] px-4 py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer w-full transition-all"
+                          >
+                            <Sparkles className="w-4 h-4" />
+                            <span>ইনস্ট্যান্ট অটো-ফিল করুন ✨</span>
+                          </button>
+                        </div>
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
                             <label className="block text-slate-400 text-[11px] font-bold mb-2">ওয়েবসাইট টাইটেল (বাংলা)</label>
@@ -4621,6 +4924,42 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
                           <h4 className="text-xs font-bold text-purple-400 uppercase tracking-widest font-sans">
                             পোর্টফোলিও প্রজেক্ট ফরম
                           </h4>
+
+                          {/* 🤖 AI Instant Auto-Filler (No API Keys needed) */}
+                          <div className="bg-[#130b2c] p-4 rounded-xl border border-purple-500/20 space-y-2.5 font-sans">
+                            <div className="flex items-center gap-2 text-purple-300">
+                              <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
+                              <span className="text-[11px] font-bold uppercase tracking-wider">🤖 ম্যাজিক ইনপুট অটো-ফিলার (Gemini API ছাড়া দ্রুততম AI)</span>
+                            </div>
+                            <p className="text-[10px] text-slate-400">
+                              প্রজেক্টের যেকোনো টেক্সট বা ডেসক্রিপশন নিচে পেস্ট করে "ইনস্ট্যান্ট অটো-ফিল করুন" বাটনে ক্লিক করুন। সিস্টেম স্বয়ংক্রিয়ভাবে প্রজেক্ট টাইটেল, ক্যাটাগরি, ক্লায়েন্ট, বছর, বিবরণ, ডেমো লিংক ও যাবতীয় তথ্য নিচে ইনপুট ফিল্ডগুলোতে বসিয়ে দেবে!
+                            </p>
+                            <textarea
+                              value={aiPortfolioText}
+                              onChange={(e) => setAiPortfolioText(e.target.value)}
+                              placeholder={`উদাহরণস্বরূপ পেস্ট করুন:\nনাম: কুরিয়ার ট্র্যাকিং মোবাইল অ্যাপ\nক্যাটাগরি: mobile-app\nক্লায়েন্ট: স্পিডকার্গো বাংলাদেশ\nবছর: ২০২৬\nট্যাগস: Flutter, Node.js, Express, Firebase\nলিংক: https://speedcargo.com\nবিবরণ: রিয়েল-টাইম জিপিএস ট্র্যাকিং ও কাস্টমার নোটিফিকেশন সহ কুরিয়ার ম্যানেজমেন্ট অ্যাপ।`}
+                              className="w-full bg-[#0d051a] border border-purple-500/10 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-600 focus:outline-none min-h-[120px] font-sans"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!aiPortfolioText.trim()) {
+                                  triggerSuccessAlert("অনুগ্রহ করে প্রথমে কিছু টেক্সট লিখুন বা পেস্ট করুন!");
+                                  return;
+                                }
+                                const parsed = parsePortfolioTextToObj(aiPortfolioText);
+                                setEditPortfolioItem(prev => ({
+                                  ...prev,
+                                  ...parsed
+                                }));
+                                triggerSuccessAlert("ম্যাজিক অটো-ফিল সফল হয়েছে! সংশ্লিষ্ট ইনপুট ফিল্ডগুলো চেক করুন।");
+                              }}
+                              className="bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-bold text-[11px] px-4 py-2.5 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer w-full transition-all"
+                            >
+                              <Sparkles className="w-4 h-4" />
+                              <span>ইনস্ট্যান্ট অটো-ফিল করুন ✨</span>
+                            </button>
+                          </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 font-sans">
                             <div>
