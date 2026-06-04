@@ -57,8 +57,8 @@ import { WebsiteProduct, Service, PortfolioItem, PortfolioCategory, Testimonial,
 import { safeLocalStorage, safeSessionStorage } from "../utils/safeStorage";
 import { Order, OrderStatus } from "./CheckoutModal";
 
-// Helper function to compress large uploaded image files into small, performant base64 JPEGs (saves localStorage space)
-function compressImage(file: File, maxWidth = 800, maxHeight = 800, quality = 0.7): Promise<string> {
+// Helper function to compress large uploaded image files into high-quality, performant base64 JPEGs
+function compressImage(file: File, maxWidth = 1600, maxHeight = 1600, quality = 0.88): Promise<string> {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -124,8 +124,8 @@ function ImageUploadField({ label, value, onChange, placeholder }: ImageUploadFi
     if (!file) return;
     setIsCompressing(true);
     try {
-      // Compress to very compact and optimized formats for quick rendering and flawless database syncing
-      const base64 = await compressImage(file, 600, 600, 0.65);
+      // Compress to high-resolution, sharp, and optimized format for excellent visual quality
+      const base64 = await compressImage(file, 1600, 1600, 0.88);
       onChange(base64);
     } catch (e) {
       console.error("Error compressing image", e);
